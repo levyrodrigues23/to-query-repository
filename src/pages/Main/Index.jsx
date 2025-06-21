@@ -1,13 +1,28 @@
 import { FaGithub, FaPlus, FaSpinner, FaBars, FaTrash } from "react-icons/fa";
 import { Container, Form, SubmitButton, List, DeleteButton } from "./Styles";
-import { useState, useCallback } from "react";
+import {useState, useCallback, useEffect } from "react";
 
 import api from "../../services/api";
+import { Link } from "react-router-dom";
 
 export default function Main() {
   const [newRepo, setNewRepo] = useState("");
   const [repositorios, setRepositorios] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [alert, setAlert] = useState(null)
+  
+// did mount
+useEffect(()=>{
+  const repoStorage = localStorage.getItem("repositorios");
+  if (repoStorage) {
+    setRepositorios(JSON.parse(repoStorage)); //se tiver algo no localStorage, ele converte de string para objeto
+  }
+},[])
+
+//did update
+useEffect(()=>{
+localStorage.setItem("repositorios", JSON.stringify(repositorios))
+}, [repositorios])
 
   const handleSubmit = useCallback(
     (e) => {
@@ -15,8 +30,21 @@ export default function Main() {
 
       async function submit() {
         setLoading(true); //ativa o loading
+        setAlert(null); //limpa o alert
         try {
+          if (newRepo === "") {
+            throw new Error("Você precisa indicar um repositório");
+          }
+
           const response = await api.get(`repos/${newRepo}`);
+
+          const hasRepo = repositorios.find(repo => repo.name === newRepo); 
+
+          if (hasRepo){
+            throw new Error("O repositório já foi adicionado, tente outro!");
+          }       
+           
+
 
           const data = {
             name: response.data.full_name,
@@ -25,6 +53,7 @@ export default function Main() {
           setRepositorios([...repositorios, data]); //ele pega tudo que ja tem, adiciona o data e coloca no array dentro de repositorios
           setNewRepo(""); //limpa o input apos o submit
         } catch (error) {
+          setAlert(true); //ativa o alert
           console.log(error);
         } finally {
           setLoading(false);
@@ -38,14 +67,16 @@ export default function Main() {
 
   function handleInputChange(e) {
     setNewRepo(e.target.value);
+    setAlert(null); //limpa o alert quando o usuário digita algo
   }
 
-  const handleDelete = useCallback((repo) => {
-const find = repositorios.filter(r => r.name !== repo); 
-setRepositorios(find); 
-  }, [repositorios]
-
-  )
+  const handleDelete = useCallback(
+    (repo) => {
+      const find = repositorios.filter((r) => r.name !== repo);
+      setRepositorios(find);
+    },
+    [repositorios]
+  );
 
   return (
     <Container>
@@ -54,7 +85,7 @@ setRepositorios(find);
         Meus Repositorios
       </h1>
 
-      <Form onSubmit={handleSubmit}>
+      <Form onSubmit={handleSubmit} error={alert}>
         <input
           type="text"
           placeholder="Adicionar Repositorios"
@@ -70,10 +101,10 @@ setRepositorios(find);
           ) : (
             <FaPlus color="#FFF" size={14} />
           )}
-        </SubmitButton>
+        </SubmitButton>0
       </Form>
       <List>
-        {repositorios.map(repo => (
+        {repositorios.map((repo) => (
           <li key={repo.name}>
             <span>
               <DeleteButton onClick={() => handleDelete(repo.name)}>
@@ -81,9 +112,9 @@ setRepositorios(find);
               </DeleteButton>
               {repo.name}
             </span>
-            <a href="">
+            <Link to={`/repositorio/${encodeURIComponent(repo.name) }`}> {/* o encode informa que o repo todo é um parametro completo, e não duas partes diferentes  */}
               <FaBars size={20} />
-            </a>
+            </Link>
           </li>
         ))}
       </List>
