@@ -1,23 +1,22 @@
-import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
-import {
-  Container,
-  Owner,
-  Loading,
-  BackButton,
-  IssuesList,
-  PageActions,
-} from "./Styles";
-import api from "../../services/api";
-import { FaArrowLeft } from "react-icons/fa";
+import React, { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
+import { Container, Owner, Loading, BackButton, IssuesList, PageActions, FilterList } from '../Repositorio/Styles'
+import { FaArrowLeft } from 'react-icons/fa';
+import api from '../../services/api';
 
-const Repositorio = () => {
-  const [repositorioo, setRepositorio] = useState({});
+export default function Repositorio() {
+  const { repositorio } = useParams();
+
+  const [repoData, setRepoData] = useState({});
   const [issues, setIssues] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
-
-  const { repositorio } = useParams();
+  const [filters] = useState([
+    { state: 'open', label: 'Abertas' },
+    { state: 'all', label: 'Todas' },
+    { state: 'closed', label: 'Fechadas' },
+  ]);
+  const [filterIndex, setFilterIndex] = useState(0);
 
   useEffect(() => {
     async function load() {
@@ -28,47 +27,39 @@ const Repositorio = () => {
           api.get(`/repos/${nomeRepo}`),
           api.get(`/repos/${nomeRepo}/issues`, {
             params: {
-              state: "open",
-              per_page: 5, // limita a 5 issues
+              state: filters[filterIndex].state,
+              page,
+              per_page: 5,
             },
           }),
         ]);
 
-        setRepositorio(repositorioData.data);
-        setIssues(issuesData.data);
-        console.log(issuesData.data);
-        setLoading(false);
+        setRepoData(repositorioData.data);
+        setIssues(Array.isArray(issuesData.data) ? issuesData.data : []);
       } catch (error) {
+        setIssues([]);
         console.error("Erro ao buscar dados:", error);
+      } finally {
+        setLoading(false);
       }
     }
-    load(); // chama a função load quando o componente é montado
-  }, [repositorio]);
 
-  useEffect(() => {
-    async function loadIssue() {
-      const nomeRepo = decodeURIComponent(repositorio);
-
-      const response = await api.get(`/repos/${nomeRepo}/issues`, {
-        params: {
-          state: "open",
-          page,
-          per_page: 5,
-        },
-      });
-      setIssues(response.data);
-    }
-    loadIssue(); // chama a função loadIssue quando a página é alterada
-  }, [repositorio, page]);
+    load();
+  }, [repositorio, filterIndex, page]);
 
   function handlePage(action) {
-    setPage(action === "back" ? page - 1 : page + 1);
+    setPage(action === 'back' ? page - 1 : page + 1);
+  }
+
+  function handleFilter(index) {
+    setFilterIndex(index);
+    setPage(1);
   }
 
   if (loading) {
     return (
       <Loading>
-        <h1>carregando</h1>
+        <h1>Carregando...</h1>
       </Loading>
     );
   }
@@ -76,48 +67,63 @@ const Repositorio = () => {
   return (
     <Container>
       <BackButton to="/">
-        <FaArrowLeft color="#000" size={35} />
+        <FaArrowLeft color="#000" size={30} />
       </BackButton>
+
       <Owner>
         <img
-          src={repositorioo.owner.avatar_url}
-          alt={repositorioo.owner.login}
+          src={repoData.owner?.avatar_url}
+          alt={repoData.owner?.login}
         />
-        <h1>{repositorioo.name}</h1>
-        <p>{repositorioo.description}</p>
+        <h1>{repoData.name}</h1>
+        <p>{repoData.description}</p>
       </Owner>
 
-      <IssuesList>
-        {issues.map((issue) => (
-          <li key={String(issue.id)}>
-            <img src={issue.user.avatar_url} alt={issue.user.login} />
-
-            <div>
-              <strong>
-                <a href={issue.html_url}>{issue.title}</a>
-
-                {issue.labels.map((label) => (
-                  <span key={String(label.id)}>{label.name}</span>
-                ))}
-              </strong>
-              <p>{issue.user.login}</p>
-            </div>
-          </li>
+      <FilterList active={filterIndex}>
+        {filters.map((filter, index) => (
+          <button
+            type="button"
+            key={filter.label}
+            onClick={() => handleFilter(index)}
+          >
+            {filter.label}
+          </button>
         ))}
+      </FilterList>
+
+      <IssuesList>
+        {Array.isArray(issues) && issues.length > 0 ? (
+          issues.map(issue => (
+            <li key={String(issue.id)}>
+              <img src={issue.user.avatar_url} alt={issue.user.login} />
+              <div>
+                <strong>
+                  <a href={issue.html_url}>{issue.title}</a>
+                  {issue.labels.map(label => (
+                    <span key={String(label.id)}>{label.name}</span>
+                  ))}
+                </strong>
+                <p>{issue.user.login}</p>
+              </div>
+            </li>
+          ))
+        ) : (
+          <li>Nenhuma issue encontrada.</li>
+        )}
       </IssuesList>
 
       <PageActions>
-        <button type="button" onClick={() => handlePage("back")}
+        <button
+          type="button"
+          onClick={() => handlePage('back')}
           disabled={page < 2}
-          >
+        >
           Voltar
         </button>
-        <button type="button" onClick={() => handlePage("next")}>
+        <button type="button" onClick={() => handlePage('next')}>
           Proxima
         </button>
       </PageActions>
     </Container>
   );
-};
-
-export default Repositorio;
+}
