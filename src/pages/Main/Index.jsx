@@ -1,36 +1,37 @@
 import { FaGithub, FaPlus, FaSpinner, FaBars, FaTrash } from "react-icons/fa";
-import { Container, Form, SubmitButton, List, DeleteButton } from "./Styles";
-import {useState, useCallback, useEffect } from "react";
-
+import { Container, Form, SubmitButton, List, DeleteButton, Suggestions } from "./Styles";
+import { useState, useCallback, useEffect, useRef } from "react";
 import api from "../../services/api";
 import { Link } from "react-router-dom";
 
 export default function Main() {
   const [newRepo, setNewRepo] = useState("");
+  const [suggestions, setSuggestions] = useState([]);
   const [repositorios, setRepositorios] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [alert, setAlert] = useState(null)
-  
-// did mount
-useEffect(()=>{
-  const repoStorage = localStorage.getItem("repositorios");
-  if (repoStorage) {
-    setRepositorios(JSON.parse(repoStorage)); //se tiver algo no localStorage, ele converte de string para objeto
-  }
-},[])
+  const [alert, setAlert] = useState(null);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const debounceTimer = useRef(null);
 
-//did update
-useEffect(()=>{
-localStorage.setItem("repositorios", JSON.stringify(repositorios))
-}, [repositorios])
+  useEffect(() => {
+    const repoStorage = localStorage.getItem("repositorios");
+    if (repoStorage) {
+      setRepositorios(JSON.parse(repoStorage));
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("repositorios", JSON.stringify(repositorios));
+  }, [repositorios]);
 
   const handleSubmit = useCallback(
     (e) => {
       e.preventDefault();
 
       async function submit() {
-        setLoading(true); //ativa o loading
-        setAlert(null); //limpa o alert
+        setLoading(true);
+        setAlert(null);
+
         try {
           if (newRepo === "") {
             throw new Error("Você precisa indicar um repositório");
@@ -38,22 +39,21 @@ localStorage.setItem("repositorios", JSON.stringify(repositorios))
 
           const response = await api.get(`repos/${newRepo}`);
 
-          const hasRepo = repositorios.find(repo => repo.name === newRepo); 
+          const hasRepo = repositorios.find((repo) => repo.name === newRepo);
 
-          if (hasRepo){
+          if (hasRepo) {
             throw new Error("O repositório já foi adicionado, tente outro!");
-          }       
-           
-
+          }
 
           const data = {
             name: response.data.full_name,
           };
 
-          setRepositorios([...repositorios, data]); //ele pega tudo que ja tem, adiciona o data e coloca no array dentro de repositorios
-          setNewRepo(""); //limpa o input apos o submit
+          setRepositorios([...repositorios, data]);
+          setNewRepo("");
+          setSuggestions([]);
         } catch (error) {
-          setAlert(true); //ativa o alert
+          setAlert(true);
           console.log(error);
         } finally {
           setLoading(false);
@@ -66,8 +66,35 @@ localStorage.setItem("repositorios", JSON.stringify(repositorios))
   );
 
   function handleInputChange(e) {
-    setNewRepo(e.target.value);
-    setAlert(null); //limpa o alert quando o usuário digita algo
+    const value = e.target.value;
+    setNewRepo(value);
+
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current);
+    }
+
+    if (value.length > 2) {
+      setLoadingSuggestions(true);
+      debounceTimer.current = setTimeout(async () => {
+        try {
+          const response = await api.get(
+            `https://api.github.com/search/repositories?q=${value}`
+          );
+          setSuggestions(response.data.items.slice(0, 5));
+        } catch (error) {
+          console.error("Erro ao buscar sugestões:", error);
+        } finally {
+          setLoadingSuggestions(false);
+        }
+      }, 500);
+    } else {
+      setSuggestions([]);
+    }
+  }
+
+  function handleSuggestionClick(fullName) {
+    setNewRepo(fullName);
+    setSuggestions([]);
   }
 
   const handleDelete = useCallback(
@@ -80,29 +107,51 @@ localStorage.setItem("repositorios", JSON.stringify(repositorios))
 
   return (
     <Container>
-      <h1>
-        <FaGithub size={25} />
-        Meus Repositorios
-      </h1>
+      <div>
+        <h1>
+          <FaGithub size={25} />
+          Meus Repositórios
+        </h1>
+      </div>
 
       <Form onSubmit={handleSubmit} error={alert}>
         <input
           type="text"
-          placeholder="Adicionar Repositorios"
+          placeholder="Adicionar Repositórios"
           value={newRepo}
           onChange={handleInputChange}
+          autoComplete="off"
         />
 
-        <SubmitButton
-          loading={loading ? 1 : 0} //se loading for true, o valor é 1, se for false, o valor é 0
-        >
+        <SubmitButton loading={loading ? 1 : 0}>
           {loading ? (
             <FaSpinner color="#FFF" size={14} />
           ) : (
             <FaPlus color="#FFF" size={14} />
           )}
-        </SubmitButton>0
+        </SubmitButton>
+
+        {newRepo.length > 2 && (
+          <Suggestions>
+            {loadingSuggestions && (
+              <li>
+                <FaSpinner size={16} /> Buscando...
+              </li>
+            )}
+            {!loadingSuggestions &&
+              suggestions.map((repo) => (
+                <li
+                  key={repo.id}
+                  onClick={() => handleSuggestionClick(repo.full_name)}
+                >
+                  <img src={repo.owner.avatar_url} alt={repo.owner.login} />
+                  {repo.full_name}
+                </li>
+              ))}
+          </Suggestions>
+        )}
       </Form>
+
       <List>
         {repositorios.map((repo) => (
           <li key={repo.name}>
@@ -112,7 +161,7 @@ localStorage.setItem("repositorios", JSON.stringify(repositorios))
               </DeleteButton>
               {repo.name}
             </span>
-            <Link to={`/repositorio/${encodeURIComponent(repo.name) }`}> {/* o encode informa que o repo todo é um parametro completo, e não duas partes diferentes  */}
+            <Link to={`/repositorio/${encodeURIComponent(repo.name)}`}>
               <FaBars size={20} />
             </Link>
           </li>
